@@ -1,0 +1,26 @@
+# Standalone Worker Deployment
+# Use this when deploying workers on separate hosts from the manager.
+#
+# Usage:
+#   docker compose -f docker-compose.worker.yml up -d
+#   podman compose -f docker-compose.worker.yml up -d
+#
+# Scale:
+#   docker compose -f docker-compose.worker.yml up --scale worker=5 -d
+
+version: '3.8'
+services:
+  worker:
+    build: .
+    environment:
+      - MANAGER_URL=${MANAGER_URL:-http://localhost:8080}
+      - WORKER_TOKEN=${WORKER_TOKEN:-change_me_to_a_secure_token}
+      - WORKER_ID=${WORKER_ID:-}
+      - HOSTNAME=${HOSTNAME:-}
+      - CAPABILITIES=${CAPABILITIES:-nmap,nikto,gobuster,sqlmap,curl,jq}
+      - HEARTBEAT_INTERVAL=${HEARTBEAT_INTERVAL:-30000}
+      - TASK_REQUEST_INTERVAL=${TASK_REQUEST_INTERVAL:-5000}
+      - MAX_CONCURRENT_TASKS=${MAX_CONCURRENT_TASKS:-1}
+    restart: unless-stopped
+    # For Podman host networking (recommended for Kali workers):
+    # network_mode: host
