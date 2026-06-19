@@ -250,6 +250,17 @@ class WorkerClient {
             console.log(`  📦 Installing ${capability}${pkgName !== capability ? ` (as ${pkgName})` : ''}...`);
             execSync(pm.installCmd(pkgName), { stdio: 'pipe', timeout: 120000 });
             console.log(`  ✅ ${capability} installed`);
+            // Post-install: fix binary name mismatches (e.g. nikto → nikto.pl on Alpine)
+            const binaryFixes = {
+                nikto: pm.name === 'apk' ? '/usr/bin/nikto.pl' : '', // Alpine installs nikto.pl, not nikto
+            };
+            const sourcePath = binaryFixes[capability];
+            if (sourcePath && pm.name === 'apk') {
+                try {
+                    execSync(`ln -sf ${sourcePath} /usr/bin/${capability} 2>&1`, { stdio: 'pipe' });
+                }
+                catch { /* non-critical */ }
+            }
             return true;
         }
         catch (err) {

@@ -2,6 +2,47 @@
 
 Distributed worker agent for the [Grobogan Vulnerability Assessment System](https://github.com/nael-lilik/vuln-assessment-system). Connects to a Manager via Socket.IO, receives security scan tasks, executes them against a whitelist of allowed tools, and streams logs/results back in real time.
 
+## Docker Images
+
+Two images available — pick based on your needs:
+
+| | Alpine | Kali |
+|---|--------|------|
+| **Dockerfile** | `Dockerfile` | `Dockerfile.kali` |
+| **Base** | `node:20-alpine` | `kalilinux/kali-rolling` |
+| **Size** | ~200 MB | ~2 GB |
+| **Startup** | Fast (~5s) | Slower (~30s) |
+| **Tools** | Auto-installed on connect | 25+ pre-installed |
+| **Best for** | Light scanning, many workers | Heavy scanning, full tool suite |
+| **Package manager** | `apk` | `apt-get` |
+
+### Tool Availability
+
+| Tool | Alpine | Kali |
+|------|--------|------|
+| `nmap` | ✅ auto-install | ✅ pre-installed |
+| `nikto` | ✅ auto-install | ✅ pre-installed |
+| `curl` | ✅ auto-install | ✅ pre-installed |
+| `jq` | ✅ auto-install | ✅ pre-installed |
+| `sslscan` | ✅ auto-install | ✅ pre-installed |
+| `sqlmap` | ✅ pip fallback | ✅ pre-installed |
+| `dig` | ✅ (as `bind-tools`) | ✅ pre-installed |
+| `gobuster` | ❌ not in Alpine | ✅ pre-installed |
+| `whatweb` | ❌ not in Alpine | ✅ pre-installed |
+| `masscan` | ❌ | ✅ pre-installed |
+| `hydra` | ❌ | ✅ pre-installed |
+| `dnsrecon` | ❌ | ✅ pre-installed |
+| `dirb` | ❌ | ✅ pre-installed |
+| `amass` | ❌ | ✅ pre-installed |
+| `wafw00f` | ❌ | ✅ pre-installed |
+| `john` | ❌ | ✅ pre-installed |
+| `hashcat` | ❌ | ✅ pre-installed |
+| `enum4linux` | ❌ | ✅ pre-installed |
+| `smbclient` | ❌ | ✅ pre-installed |
+| `impacket` | ❌ | ✅ pre-installed |
+
+> **Auto-install:** On first connect, the worker detects missing capabilities and installs them automatically (apk → pip3 fallback). Tools not available on Alpine get a clear log message suggesting the Kali image.
+
 ## Architecture
 
 ```
@@ -20,11 +61,12 @@ Worker                          Manager
 
 **Communication flow:**
 1. Worker connects → registers with ID, hostname, IP, capabilities, and health report
-2. Sends periodic heartbeats (CPU/memory/disk stats)
-3. Polls for tasks when below `MAX_CONCURRENT_TASKS`
-4. Manager assigns task → worker validates command against whitelist → spawns child process
-5. Worker streams stdout/stderr as `task:log` events in real time
-6. On completion: emits `task:completed` with summary + raw output
+2. Auto-installs missing capabilities (first connect only)
+3. Sends periodic heartbeats (CPU/memory/disk stats)
+4. Polls for tasks when below `MAX_CONCURRENT_TASKS`
+5. Manager assigns task → worker validates command against whitelist → spawns child process
+6. Worker streams stdout/stderr as `task:log` events in real time
+7. On completion: emits `task:completed` with summary + raw output
 
 ## Quick Start
 
@@ -110,23 +152,67 @@ Results are reported to the manager and displayed in the dashboard.
 npm install && npm run build && node dist/index.js
 ```
 
-### Docker
+### Docker — Alpine (Lightweight)
 
 ```bash
+# Build
 docker build -t grobogan-worker .
-docker run -d --name grobogan-worker \
-  -e MANAGER_URL=https://your-manager.example.com \
+
+# Run
+docker run -d --name grobogan-worker --network host \
+  -e MANAGER_URL=http://localhost:8080 \
   -e WORKER_TOKEN=your_secure_token \
+  -e CAPABILITIES=nmap,nikto,sqlmap,curl,jq,sslscan,dig \
   grobogan-worker
+```
+
+**Startup log:**
+```
+🔧 Auto-installing 6 missing capabilities: nmap, nikto, sqlmap, curl, jq, sslscan, dig
+  ✅ nmap installed
+  ✅ nikto installed
+  ✅ sqlmap installed (via pip)
+  ✅ curl installed
+  ✅ jq installed
+  ✅ sslscan installed
+  ✅ dig installed
+🔧 Auto-install complete: 7/7 installed
+```
+
+### Docker — Kali (Full Tool Suite)
+
+```bash
+# Build
+docker build -f Dockerfile.kali -t grobogan-kali-worker .
+
+# Run
+docker run -d --name grobogan-kali-worker --network host \
+  -e MANAGER_URL=http://localhost:8080 \
+  -e WORKER_TOKEN=your_secure_token \
+  -e CAPABILITIES=nmap,nikto,gobuster,sqlmap,curl,jq,masscan,dnsrecon,hydra,sslscan,amass,dirb,whatweb,testssl \
+  grobogan-kali-worker
+```
+
+**Startup log:**
+```
+✅ All capabilities already installed
+✅ Worker approved — ready to receive tasks
 ```
 
 ### Podman
 
 ```bash
+# Alpine
 podman build --network host -t grobogan-worker .
 podman run -d --name grobogan-worker --network host \
   -e MANAGER_URL=http://localhost:8080 \
   grobogan-worker
+
+# Kali
+podman build --network host -f Dockerfile.kali -t grobogan-kali-worker .
+podman run -d --name kali-worker --network host \
+  -e MANAGER_URL=http://localhost:8080 \
+  grobogan-kali-worker
 ```
 
 ### Standalone Docker Compose
@@ -150,25 +236,6 @@ Edit `.env` before running or pass variables inline:
 MANAGER_URL=https://va-grob.nael.my.id WORKER_TOKEN=secret \
   docker compose -f docker-compose.worker.yml up -d
 ```
-
-### Kali Linux Worker (Full Tool Suite)
-
-Build with Kali base image including 25+ security tools pre-installed:
-
-```bash
-# Docker
-docker build -f Dockerfile.kali -t grobogan-kali-worker .
-
-# Podman
-podman build -f Dockerfile.kali -t grobogan-kali-worker .
-
-# Run
-podman run -d --name kali-worker --network host \
-  -e MANAGER_URL=http://localhost:8080 \
-  grobogan-kali-worker
-```
-
-**Kali extras:** `masscan`, `dnsrecon`, `hydra`, `sslscan`, `amass`, `dirb`, `whatweb`, `testssl`, `wafw00f`, `john`, `hashcat`, `subfinder`, `snmpcheck`, `enum4linux`, `smbclient`, `impacket`
 
 ## Socket.IO Protocol
 
@@ -194,7 +261,7 @@ podman run -d --name kali-worker --network host \
 | `task:cancel` | `{ taskId }` | Manager cancels a running task |
 | `worker:shutdown` | — | Graceful shutdown signal |
 | `worker:approval` | `{ approved: boolean }` | Worker approved/rejected by admin |
-| `worker:install-capability` | `{ capability }` | Dashboard triggers `apt-get install <tool>` on worker |
+| `worker:install-capability` | `{ capability }` | Dashboard triggers install on worker |
 | `worker:verify-capability` | `{ capability }` | Dashboard triggers capability health re-check |
 
 ## Task Lifecycle
@@ -216,7 +283,7 @@ worker/
 │   ├── index.ts               # Entry point, loops, graceful shutdown
 │   ├── config.ts              # Env config, persistent ID, capability detection/health
 │   ├── socket/
-│   │   └── worker-client.ts   # Socket.IO client, registration, task lifecycle, reconnection
+│   │   └── worker-client.ts   # Socket.IO client, registration, auto-install, task lifecycle
 │   ├── executors/
 │   │   └── executor.ts        # Command spawn, whitelist validation, log streaming, cancellation
 │   └── types/
@@ -224,8 +291,8 @@ worker/
 ├── .env.example               # Configuration template
 ├── .worker-id                 # Auto-generated persistent worker ID (gitignored)
 ├── docker-compose.worker.yml  # Standalone worker Compose file
-├── Dockerfile                 # Alpine Node.js 20 image
-├── Dockerfile.kali            # Kali Linux full tool suite image
+├── Dockerfile                 # Alpine Node.js 20 image (~200 MB)
+├── Dockerfile.kali            # Kali Linux full tool suite image (~2 GB)
 ├── jest.config.ts
 ├── tsconfig.json
 └── package.json

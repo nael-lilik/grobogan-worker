@@ -1,7 +1,7 @@
 # Kali Linux Worker for Grobogan Vulnerability Assessment System
 # Optimized for Docker/Podman deployment with security tools pre-installed
 
-FROM kalilinux/kali-rolling:latest
+FROM docker.io/kalilinux/kali-rolling:latest
 
 # Prevent interactive prompts during package installs
 ENV DEBIAN_FRONTEND=noninteractive
