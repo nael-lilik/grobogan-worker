@@ -1,6 +1,6 @@
 # Grobogan Worker Agent
 
-Distributed worker agent for the [Grobogan Vulnerability Assessment System](https://github.com/nael-lilik/grobogan). Connects to a Manager via Socket.IO, receives security scan tasks, executes them against a whitelist of allowed tools, and streams logs/results back in real time.
+Distributed worker agent for the [Grobogan Vulnerability Assessment System](https://github.com/nael-lilik/vuln-assessment-system). Connects to a Manager via Socket.IO, receives security scan tasks, executes them against a whitelist of allowed tools, and streams logs/results back in real time.
 
 ## Architecture
 
@@ -246,5 +246,5 @@ npm run lint              # ESLint
 
 | Repository | Description |
 |------------|-------------|
-| [grobogan](https://github.com/nael-lilik/grobogan) | Main system — Manager backend + Dashboard frontend |
+| [vuln-assessment-system](https://github.com/nael-lilik/vuln-assessment-system) | Main system — Manager backend + Dashboard frontend |
 | [grobogan-worker](https://github.com/nael-lilik/grobogan-worker) | This repo — standalone worker agent |
