@@ -114,3 +114,4 @@ worker/src/
 ```
 
 Worker connects to Manager → registers capabilities → receives tasks → executes → streams results.
+# grobogan-worker
