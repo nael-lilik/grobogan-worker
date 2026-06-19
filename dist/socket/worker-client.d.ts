@@ -14,6 +14,7 @@ export declare class WorkerClient {
     getStatus(): 'idle' | 'working';
     connect(): void;
     private isRunningInContainer;
+    private detectPackageManager;
     private register;
     private reportCapabilities;
     private handleTaskAssignment;

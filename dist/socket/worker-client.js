@@ -114,33 +114,41 @@ class WorkerClient {
                 if (isContainer) {
                     console.warn('⚠ Running in container — installed tools will be lost on restart');
                 }
-                execSync(`apt-get update -qq && apt-get install -y -qq ${data.capability} 2>&1`, {
+                const pm = await this.detectPackageManager();
+                // Map tool names that differ across distros
+                const pkgName = pm.packageMap[data.capability] || data.capability;
+                execSync(pm.installCmd(pkgName), {
                     stdio: 'pipe',
                     timeout: 120000,
                 });
-                console.log(`✅ Installed: ${data.capability}`);
+                console.log(`✅ Installed: ${data.capability}${pkgName !== data.capability ? ` (as ${pkgName})` : ''}`);
                 // Install companion wordlists/dependencies for certain tools
-                const companionPackages = {
-                    gobuster: 'wordlists',
-                    dirb: 'wordlists',
-                    dirbuster: 'wordlists',
-                    ffuf: 'wordlists',
-                    wfuzz: 'wordlists',
-                    hydra: 'wordlists',
-                    john: 'wordlists',
-                };
-                const companion = companionPackages[data.capability];
-                if (companion) {
-                    try {
-                        execSync(`apt-get install -y -qq ${companion} 2>&1`, {
-                            stdio: 'pipe',
-                            timeout: 60000,
-                        });
-                        console.log(`📚 Companion package installed: ${companion}`);
+                if (pm.name === 'apt') {
+                    const companionPackages = {
+                        gobuster: 'wordlists',
+                        dirb: 'wordlists',
+                        dirbuster: 'wordlists',
+                        ffuf: 'wordlists',
+                        wfuzz: 'wordlists',
+                        hydra: 'wordlists',
+                        john: 'wordlists',
+                    };
+                    const companion = companionPackages[data.capability];
+                    if (companion) {
+                        try {
+                            execSync(pm.installCmd(companion), { stdio: 'pipe', timeout: 60000 });
+                            console.log(`📚 Companion package installed: ${companion}`);
+                        }
+                        catch (e) {
+                            console.warn(`⚠ Companion package ${companion} failed: ${e.message}`);
+                        }
                     }
-                    catch (e) {
-                        console.warn(`⚠ Companion package ${companion} failed: ${e.message}`);
-                    }
+                }
+                else {
+                    // Alpine / other distros: wordlists come bundled with the tool or don't exist as separate package
+                    console.log('ℹ Companion wordlists not installed (wordlists package not available on this distro).');
+                    console.log('  Tools like gobuster/dirb need wordlists. Download manually:');
+                    console.log('  curl -o /usr/share/wordlists/dirb/common.txt https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt');
                 }
                 await this.reportCapabilities();
             }
@@ -161,6 +169,50 @@ class WorkerClient {
         catch {
             return false;
         }
+    }
+    async detectPackageManager() {
+        const { execSync } = await Promise.resolve().then(() => __importStar(require('child_process')));
+        const which = (bin) => {
+            try {
+                execSync(`which ${bin}`, { stdio: 'pipe' });
+                return true;
+            }
+            catch {
+                return false;
+            }
+        };
+        if (which('apt-get')) {
+            return {
+                name: 'apt',
+                installCmd: (pkg) => `apt-get update -qq && apt-get install -y -qq ${pkg} 2>&1`,
+                packageMap: {},
+            };
+        }
+        if (which('apk')) {
+            return {
+                name: 'apk',
+                installCmd: (pkg) => `apk add --no-cache ${pkg} 2>&1`,
+                packageMap: {
+                    dig: 'bind-tools',
+                    netcat: 'netcat-openbsd',
+                },
+            };
+        }
+        if (which('dnf')) {
+            return {
+                name: 'dnf',
+                installCmd: (pkg) => `dnf install -y ${pkg} 2>&1`,
+                packageMap: {},
+            };
+        }
+        if (which('yum')) {
+            return {
+                name: 'yum',
+                installCmd: (pkg) => `yum install -y ${pkg} 2>&1`,
+                packageMap: {},
+            };
+        }
+        throw new Error('No supported package manager found (apt-get, apk, dnf, yum)');
     }
     async register() {
         const actualCaps = await this.config.detectActualCapabilities();
