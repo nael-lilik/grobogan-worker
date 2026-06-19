@@ -48,6 +48,8 @@ export class WorkerClient {
     return this.activeTasks.size === 0 ? 'idle' : 'working';
   }
 
+  private hasAutoInstalled: boolean = false;
+
   public connect(): void {
     if (this.socket) return;
 
@@ -67,6 +69,11 @@ export class WorkerClient {
       await this.register();
       this.emitStatus();
       await this.reportCapabilities();
+      // Auto-install missing capabilities (first connect only)
+      if (!this.hasAutoInstalled) {
+        this.hasAutoInstalled = true;
+        await this.autoInstallCapabilities();
+      }
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -104,33 +111,20 @@ export class WorkerClient {
     this.socket.on('worker:install-capability', async (data: { capability: string }) => {
       console.log(`📦 Installing capability: ${data.capability}`);
       try {
-        const { execSync } = await import('child_process');
         const isContainer = await this.isRunningInContainer();
         if (isContainer) {
           console.warn('⚠ Running in container — installed tools will be lost on restart');
         }
 
         const pm = await this.detectPackageManager();
+        const ok = await this.installTool(data.capability, pm);
 
-        // Map tool names that differ across distros
-        const pkgName = pm.packageMap[data.capability] || data.capability;
-
-        execSync(pm.installCmd(pkgName), {
-          stdio: 'pipe',
-          timeout: 120000,
-        });
-        console.log(`✅ Installed: ${data.capability}${pkgName !== data.capability ? ` (as ${pkgName})` : ''}`);
-
-        // Install companion wordlists/dependencies for certain tools
-        if (pm.name === 'apt') {
+        // Install companion wordlists/dependencies for certain tools (apt only)
+        if (ok && pm.name === 'apt') {
+          const { execSync } = await import('child_process');
           const companionPackages: Record<string, string> = {
-            gobuster: 'wordlists',
-            dirb: 'wordlists',
-            dirbuster: 'wordlists',
-            ffuf: 'wordlists',
-            wfuzz: 'wordlists',
-            hydra: 'wordlists',
-            john: 'wordlists',
+            gobuster: 'wordlists', dirb: 'wordlists', dirbuster: 'wordlists',
+            ffuf: 'wordlists', wfuzz: 'wordlists', hydra: 'wordlists', john: 'wordlists',
           };
           const companion = companionPackages[data.capability];
           if (companion) {
@@ -141,8 +135,7 @@ export class WorkerClient {
               console.warn(`⚠ Companion package ${companion} failed: ${e.message}`);
             }
           }
-        } else {
-          // Alpine / other distros: wordlists come bundled with the tool or don't exist as separate package
+        } else if (ok && pm.name !== 'apt') {
           console.log('ℹ Companion wordlists not installed (wordlists package not available on this distro).');
           console.log('  Tools like gobuster/dirb need wordlists. Download manually:');
           console.log('  curl -o /usr/share/wordlists/dirb/common.txt https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt');
@@ -185,7 +178,7 @@ export class WorkerClient {
     if (which('apk')) {
       return {
         name: 'apk',
-        installCmd: (pkg: string) => `apk add --no-cache ${pkg} 2>&1`,
+        installCmd: (pkg: string) => `apk update && apk add --no-cache ${pkg} 2>&1`,
         packageMap: {
           dig: 'bind-tools',
           netcat: 'netcat-openbsd',
@@ -207,6 +200,89 @@ export class WorkerClient {
       };
     }
     throw new Error('No supported package manager found (apt-get, apk, dnf, yum)');
+  }
+
+  private async autoInstallCapabilities(): Promise<void> {
+    const isContainer = await this.isRunningInContainer();
+    const actualCaps = await this.config.detectActualCapabilities();
+    const missing = this.config.capabilities.filter(c => !actualCaps.includes(c));
+
+    if (missing.length === 0) {
+      console.log('✅ All capabilities already installed');
+      return;
+    }
+
+    console.log(`🔧 Auto-installing ${missing.length} missing capabilities: ${missing.join(', ')}`);
+
+    if (isContainer) {
+      console.warn('⚠ Running in container — installed tools will be lost on restart');
+    }
+
+    let pm: PackageManager;
+    try {
+      pm = await this.detectPackageManager();
+    } catch (err: any) {
+      console.warn(`⚠ Cannot auto-install: ${err.message}`);
+      return;
+    }
+
+    let installedCount = 0;
+
+    for (const cap of missing) {
+      const ok = await this.installTool(cap, pm);
+      if (ok) installedCount++;
+    }
+
+    console.log(`🔧 Auto-install complete: ${installedCount}/${missing.length} installed`);
+
+    // Re-report capabilities after install
+    await this.reportCapabilities();
+  }
+
+  /**
+   * Install a single tool, trying package manager first, then fallback methods.
+   * Returns true if installed successfully.
+   */
+  private async installTool(capability: string, pm: PackageManager): Promise<boolean> {
+    const { execSync } = await import('child_process');
+    const pkgName = pm.packageMap[capability] || capability;
+
+    // ── Step 1: try package manager ──
+    try {
+      console.log(`  📦 Installing ${capability}${pkgName !== capability ? ` (as ${pkgName})` : ''}...`);
+      execSync(pm.installCmd(pkgName), { stdio: 'pipe', timeout: 120000 });
+      console.log(`  ✅ ${capability} installed`);
+      return true;
+    } catch (err: any) {
+      const errMsg = err.stderr?.toString().substring(0, 120) || err.message?.substring(0, 120) || 'unknown';
+      console.warn(`  ⚠ ${capability} (pkg) failed: ${errMsg}`);
+    }
+
+    // ── Step 2: try pip fallback (Python tools) ──
+    const pipTools: Record<string, string> = { sqlmap: 'sqlmap' };
+    if (pipTools[capability]) {
+      try {
+        console.log(`  📦 Installing ${capability} via pip...`);
+        // Ensure python3 + pip are present, then install
+        if (pm.name === 'apk') {
+          execSync('apk add --no-cache python3 py3-pip 2>&1', { stdio: 'pipe', timeout: 60000 });
+        } else {
+          execSync('apt-get install -y -qq python3 python3-pip 2>&1', { stdio: 'pipe', timeout: 60000 });
+        }
+        execSync(`pip3 install --break-system-packages ${pipTools[capability]} 2>&1`, {
+          stdio: 'pipe',
+          timeout: 120000,
+        });
+        console.log(`  ✅ ${capability} installed (via pip)`);
+        return true;
+      } catch (err: any) {
+        console.warn(`  ⚠ ${capability} (pip) failed: ${err.stderr?.toString().substring(0, 120) || err.message?.substring(0, 120)}`);
+      }
+    }
+
+    // ── Step 3: hint for tools not available on this distro ──
+    console.warn(`  ℹ ${capability}: not available via ${pm.name}. Use the Kali Docker image for full tool suite.`);
+    return false;
   }
 
   private async register(): Promise<void> {

@@ -12,9 +12,16 @@ export declare class WorkerClient {
     constructor(config: Config);
     getActiveTaskCount(): number;
     getStatus(): 'idle' | 'working';
+    private hasAutoInstalled;
     connect(): void;
     private isRunningInContainer;
     private detectPackageManager;
+    private autoInstallCapabilities;
+    /**
+     * Install a single tool, trying package manager first, then fallback methods.
+     * Returns true if installed successfully.
+     */
+    private installTool;
     private register;
     private reportCapabilities;
     private handleTaskAssignment;
