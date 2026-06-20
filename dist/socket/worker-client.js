@@ -155,14 +155,80 @@ class WorkerClient {
             await this.reportCapabilities();
         });
     }
-    async isRunningInContainer() {
+    async detectEnvironment() {
+        const { execSync } = await Promise.resolve().then(() => __importStar(require('child_process')));
+        const fs = await Promise.resolve().then(() => __importStar(require('fs')));
+        // ── Container detection ──
+        let type = 'native';
+        let containerRuntime = null;
+        // Docker: /.dockerenv exists
+        if (fs.existsSync('/.dockerenv')) {
+            type = 'container';
+            containerRuntime = 'docker';
+        }
+        // Podman: /run/.containerenv exists
+        if (fs.existsSync('/run/.containerenv')) {
+            type = 'container';
+            containerRuntime = 'podman';
+        }
+        // Kubernetes: /var/run/secrets/kubernetes.io/serviceaccount exists
+        if (fs.existsSync('/var/run/secrets/kubernetes.io/serviceaccount')) {
+            type = 'container';
+            containerRuntime = containerRuntime ? `${containerRuntime}/kubernetes` : 'kubernetes';
+        }
+        // ── OS detection ──
+        let osName = 'unknown';
+        let kernel = 'unknown';
+        let distro = '';
         try {
-            const fs = await Promise.resolve().then(() => __importStar(require('fs')));
-            return fs.existsSync('/.dockerenv') || fs.existsSync('/run/.containerenv');
+            kernel = execSync('uname -r', { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 }).trim();
         }
-        catch {
-            return false;
+        catch { /* */ }
+        if (type === 'container') {
+            osName = 'Linux (container)';
+            // Check /etc/os-release inside container
+            try {
+                const release = execSync('cat /etc/os-release 2>/dev/null || cat /usr/lib/os-release 2>/dev/null', { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 });
+                const match = release.match(/^PRETTY_NAME="?(.+?)"?$/m);
+                if (match)
+                    distro = match[1];
+            }
+            catch { /* */ }
         }
+        else {
+            // Native — use uname for OS name
+            try {
+                osName = execSync('uname -s', { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 }).trim();
+            }
+            catch { /* */ }
+            try {
+                const release = execSync('cat /etc/os-release 2>/dev/null', { encoding: 'utf-8', stdio: 'pipe', timeout: 3000 });
+                const match = release.match(/^PRETTY_NAME="?(.+?)"?$/m);
+                if (match)
+                    distro = match[1];
+            }
+            catch { /* */ }
+        }
+        // ── Build readable summary ──
+        const parts = [];
+        if (distro)
+            parts.push(distro);
+        if (kernel)
+            parts.push(`kernel ${kernel}`);
+        const summary = parts.length > 0 ? parts.join(', ') : (type === 'container' ? 'Container' : 'Native');
+        return {
+            type,
+            containerRuntime,
+            os: osName,
+            distro: distro || osName,
+            kernel,
+            summary,
+        };
+    }
+    /** Legacy wrapper — still used in autoInstallCapabilities */
+    async isRunningInContainer() {
+        const env = await this.detectEnvironment();
+        return env.type === 'container';
     }
     async detectPackageManager() {
         const { execSync } = await Promise.resolve().then(() => __importStar(require('child_process')));
@@ -311,10 +377,12 @@ class WorkerClient {
     async register() {
         const actualCaps = await this.config.detectActualCapabilities();
         const capabilityHealth = await this.config.checkCapabilityHealth();
+        const environment = await this.detectEnvironment();
         const workerInfoWithResources = {
             ...this.workerInfo,
             actualCapabilities: actualCaps,
             capabilityHealth,
+            environment,
             resources: {
                 cpu: { usage: 25, cores: 4 },
                 memory: { usage: 40, total: 8192, available: 4915 },
@@ -324,6 +392,10 @@ class WorkerClient {
         };
         this.socket?.emit('worker:register', workerInfoWithResources);
         console.log(`Worker registered (max ${this.config.maxConcurrentTasks} concurrent tasks)`);
+        console.log(`  Environment: ${environment.summary}`);
+        if (environment.type === 'container') {
+            console.log(`  Runtime: ${environment.containerRuntime}`);
+        }
         if (actualCaps.length < this.config.capabilities.length) {
             const missing = this.config.capabilities.filter(c => !actualCaps.includes(c));
             console.warn(`⚠ Missing capabilities: ${missing.join(', ')} — install via dashboard`);

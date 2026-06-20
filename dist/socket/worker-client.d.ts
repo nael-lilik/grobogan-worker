@@ -14,6 +14,8 @@ export declare class WorkerClient {
     getStatus(): 'idle' | 'working';
     private hasAutoInstalled;
     connect(): void;
+    private detectEnvironment;
+    /** Legacy wrapper — still used in autoInstallCapabilities */
     private isRunningInContainer;
     private detectPackageManager;
     private autoInstallCapabilities;

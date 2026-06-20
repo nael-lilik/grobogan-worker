@@ -7,6 +7,14 @@ export interface WorkerInfo {
     ip: string;
     capabilities: string[];
 }
+export interface WorkerEnvironment {
+    type: 'native' | 'container';
+    containerRuntime: string | null;
+    os: string;
+    distro: string;
+    kernel: string;
+    summary: string;
+}
 export interface Task {
     id: string;
     type: string;
