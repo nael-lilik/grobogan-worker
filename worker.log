@@ -1181,3 +1181,35 @@ Disconnected from manager: transport close
 Connected to manager
 Worker registered (max 3 concurrent tasks)
 ✅ Worker approved — ready to receive tasks
+📦 Installing capability: gobuster
+  📦 Installing gobuster...
+  ✅ gobuster installed
+⚠ Companion package wordlists failed: Command failed: apt-get update -qq && apt-get install -y -qq wordlists 2>&1
+Disconnected from manager: transport close
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ Worker approved — ready to receive tasks
+Disconnected from manager: transport close
+Connection error: xhr poll error
+Reconnecting... attempt 1/10
+Connection error: xhr poll error
+Reconnecting... attempt 2/10
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ Worker approved — ready to receive tasks
+Disconnected from manager: transport close
+Connection error: xhr poll error
+Reconnecting... attempt 1/10
+Connection error: xhr poll error
+Reconnecting... attempt 2/10
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ Worker approved — ready to receive tasks
+Disconnected from manager: transport close
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ Worker approved — ready to receive tasks
+Disconnected from manager: transport close
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ Worker approved — ready to receive tasks

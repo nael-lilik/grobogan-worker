@@ -63,11 +63,9 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     subfinder \
     amass \
     nuclei \
-    httpx-toolkit \
-    wpscan \
-    joomscan \
     && apt-get clean \
     && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/*
+# Note: httpx and wpscan require manual install (go/gem respectively)
 
 # Install wordlists (download directly — faster than 598MB seclists package)
 RUN mkdir -p /usr/share/wordlists/dirb && \
@@ -99,6 +97,6 @@ ENV NODE_ENV=production
 ENV MANAGER_URL=http://manager:8080
 ENV HEARTBEAT_INTERVAL=30000
 ENV TASK_REQUEST_INTERVAL=5000
-ENV CAPABILITIES=nmap,nikto,gobuster,sqlmap,curl,jq,masscan,dnsrecon,hydra,sslscan,amass,dirb,whatweb,testssl
+ENV CAPABILITIES=nmap,nikto,gobuster,sqlmap,curl,jq,masscan,dnsrecon,hydra,sslscan,amass,dirb,whatweb,testssl,subfinder,nuclei
 
 CMD ["node", "dist/index.js"]
