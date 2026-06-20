@@ -75,15 +75,34 @@ Worker                          Manager
 git clone https://github.com/nael-lilik/grobogan-worker.git
 cd grobogan-worker
 
-# 2. Configure
-cp .env.example .env
-# Edit .env → set MANAGER_URL to your manager's address
+# 2. One-command setup (installs deps, builds, creates .env)
+./deploy.sh
 
-# 3. Install & build
-npm install && npm run build
+# 3. Edit .env → set MANAGER_URL to your manager's address
+#    Remote:  MANAGER_URL=https://va-grob.nael.my.id
+#    Local:   MANAGER_URL=http://localhost:8080
+nano .env
 
 # 4. Run
-node dist/index.js
+./start.sh
+```
+
+### Lifecycle Scripts
+
+| Script | Purpose |
+|--------|---------|
+| `./deploy.sh` | Install npm deps + build TypeScript + create `.env` from template |
+| `./start.sh` | Launch worker in background (PID-tracked, logs to `worker.log`) |
+| `./stop.sh` | Graceful shutdown, force-kill after 10s timeout |
+| `./install-service.sh` | Install as systemd service for production (auto-start on boot) |
+| `./deploy-worker-native.sh` | All-in-one: Node.js install + setup + run + optional systemd |
+
+```bash
+# Production deployment
+./deploy.sh
+./install-service.sh
+sudo systemctl start grobogan-worker
+journalctl -u grobogan-worker -f
 ```
 
 ## Environment Variables
@@ -146,11 +165,36 @@ Results are reported to the manager and displayed in the dashboard.
 
 ## Deployment
 
-### Native (Node.js)
+### Native (Node.js) — Recommended
 
 ```bash
-npm install && npm run build && node dist/index.js
+./deploy.sh               # install deps + build + create .env
+# Edit .env → set MANAGER_URL
+./start.sh                # run in background
+./stop.sh                 # stop
+./install-service.sh      # systemd service for production
 ```
+
+For headless install across multiple hosts:
+
+```bash
+MANAGER_URL=https://va-grob.nael.my.id \
+WORKER_TOKEN=secret \
+CAPABILITIES=nmap,nikto,gobuster,sqlmap,curl,jq \
+./deploy-worker-native.sh --noninteractive
+```
+
+### Remote Worker (Cloudflare Tunnel / Reverse Proxy)
+
+Since the dashboard Nginx already proxies `/socket.io/` to the backend, workers can connect through the public URL without exposing port 8080:
+
+```bash
+# .env
+MANAGER_URL=https://va-grob.nael.my.id
+WORKER_TOKEN=change_me_to_a_secure_token
+```
+
+The worker uses Socket.IO which upgrades to WebSocket — Cloudflare Tunnel and most reverse proxies support this natively.
 
 ### Docker — Alpine (Lightweight)
 
@@ -281,13 +325,18 @@ PENDING → ASSIGNED → RUNNING → COMPLETED / FAILED / CANCELLED
 worker/
 ├── src/
 │   ├── index.ts               # Entry point, loops, graceful shutdown
-│   ├── config.ts              # Env config, persistent ID, capability detection/health
+│   ├── config.ts              # Env config, persistent ID, capability detection/health, wordlist paths
 │   ├── socket/
-│   │   └── worker-client.ts   # Socket.IO client, registration, auto-install, task lifecycle
+│   │   └── worker-client.ts   # Socket.IO client, registration, auto-install, environment detection, task lifecycle
 │   ├── executors/
 │   │   └── executor.ts        # Command spawn, whitelist validation, log streaming, cancellation
 │   └── types/
-│       └── index.ts           # Interfaces + whitelist definition
+│       └── index.ts           # Interfaces (WorkerInfo, WorkerEnvironment) + whitelist definition
+├── deploy.sh                  # Install deps + build + create .env
+├── start.sh                   # Launch worker in background
+├── stop.sh                    # Graceful stop with forced-kill fallback
+├── install-service.sh         # Install as systemd service
+├── deploy-worker-native.sh    # All-in-one launcher (auto Node.js install, PM detection)
 ├── .env.example               # Configuration template
 ├── .worker-id                 # Auto-generated persistent worker ID (gitignored)
 ├── docker-compose.worker.yml  # Standalone worker Compose file
