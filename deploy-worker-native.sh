@@ -51,7 +51,20 @@ for arg in "$@"; do
 done
 
 THIS_DIR="$(cd "$(dirname "$0")" && pwd)"
-WORKER_DIR="$THIS_DIR/worker"
+
+# If we're already inside the worker repo (package.json exists here),
+# use THIS_DIR directly.  Otherwise look for a ./worker subdirectory
+# (classic monorepo layout).
+if [ -f "$THIS_DIR/package.json" ]; then
+  WORKER_DIR="$THIS_DIR"
+elif [ -d "$THIS_DIR/worker" ] && [ -f "$THIS_DIR/worker/package.json" ]; then
+  WORKER_DIR="$THIS_DIR/worker"
+else
+  echo "❌ Cannot find worker package.json."
+  echo "   Run this script from the grobogan-worker repo or the project root."
+  exit 1
+fi
+
 ENV_FILE="$WORKER_DIR/.env"
 PID_FILE="$WORKER_DIR/.worker.pid"
 LOG_FILE="$WORKER_DIR/worker.log"
