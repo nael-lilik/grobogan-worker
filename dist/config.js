@@ -122,12 +122,31 @@ class Config {
             enum4linux: '-h',
         };
         // Tool-to-wordlist mapping for health check
+        // A tool passes if at least one of the listed paths exists.
         const wordlistDeps = {
-            gobuster: ['/usr/share/wordlists/dirb/common.txt'],
-            dirb: ['/usr/share/wordlists/dirb/common.txt'],
-            ffuf: ['/usr/share/wordlists/dirb/common.txt'],
-            wfuzz: ['/usr/share/wordlists/dirb/common.txt'],
-            hydra: ['/usr/share/wordlists/dirb/common.txt'],
+            gobuster: [
+                '/usr/share/wordlists/dirb/common.txt',
+                '/usr/share/seclists/Discovery/Web-Content/common.txt',
+                '/opt/wordlists-extra/dirb/common.txt',
+            ],
+            dirb: [
+                '/usr/share/wordlists/dirb/common.txt',
+                '/usr/share/seclists/Discovery/Web-Content/common.txt',
+                '/opt/wordlists-extra/dirb/common.txt',
+            ],
+            ffuf: [
+                '/usr/share/wordlists/dirb/common.txt',
+                '/usr/share/seclists/Discovery/Web-Content/common.txt',
+            ],
+            wfuzz: [
+                '/usr/share/wordlists/dirb/common.txt',
+                '/usr/share/seclists/Discovery/Web-Content/common.txt',
+            ],
+            hydra: [
+                '/usr/share/wordlists/dirb/common.txt',
+                '/usr/share/seclists/Discovery/Web-Content/common.txt',
+                '/opt/wordlists-extra/dirb/common.txt',
+            ],
         };
         for (const cap of this.capabilities) {
             const result = { name: cap, installed: false, working: false };
@@ -168,13 +187,13 @@ class Config {
                 }
             }
             results.push(result);
-            // Step 3: check companion wordlists
+            // Step 3: check companion wordlists (pass if any path exists)
             const requiredWordlists = wordlistDeps[cap];
             if (requiredWordlists && result.working) {
-                const missing = requiredWordlists.filter((p) => !fs.existsSync(p));
-                if (missing.length > 0) {
+                const found = requiredWordlists.some((p) => fs.existsSync(p));
+                if (!found) {
                     result.working = false;
-                    result.error = `Missing wordlists: ${missing.join(', ')}`;
+                    result.error = `Missing wordlists: none of [${requiredWordlists.join(', ')}] found`;
                 }
             }
         }

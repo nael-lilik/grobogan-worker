@@ -16,7 +16,7 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     && apt-get clean \
     && rm -rf /var/lib/apt/lists/*
 
-# Install security assessment tools
+# Install security assessment tools — split into two groups to limit peak disk usage
 RUN apt-get update && apt-get install -y --no-install-recommends \
     # Network scanning
     nmap \
@@ -28,12 +28,21 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     gobuster \
     dirb \
     whatweb \
-    wafw00f \
-    # SQL injection / database
-    sqlmap \
     # SSL/TLS analysis
     sslscan \
     testssl.sh \
+    # Misc utilities
+    jq \
+    git \
+    python3 \
+    python3-pip \
+    && apt-get clean \
+    && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/*
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
+    # SQL injection / database
+    sqlmap \
+    wafw00f \
     # Password & brute force
     hydra \
     john \
@@ -46,13 +55,16 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
     snmpcheck \
     enum4linux \
     smbclient \
-    # Misc utilities
-    jq \
-    git \
-    python3 \
-    python3-pip \
     && apt-get clean \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/cache/apt/archives/* /var/lib/apt/lists/*
+
+# Install wordlists (download directly — faster than 598MB seclists package)
+RUN mkdir -p /usr/share/wordlists/dirb && \
+    curl -fsSL -o /usr/share/wordlists/dirb/common.txt \
+      https://raw.githubusercontent.com/drtychai/wordlists/master/dirb/common.txt && \
+    curl -fsSL -o /usr/share/wordlists/dirb/big.txt \
+      https://raw.githubusercontent.com/drtychai/wordlists/master/dirb/big.txt && \
+    echo "Wordlists downloaded"
 
 # Install Python-based tools
 RUN pip3 install --break-system-packages --no-cache-dir \

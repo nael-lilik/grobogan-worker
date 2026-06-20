@@ -264,6 +264,20 @@ export class WorkerClient {
         } catch { /* non-critical */ }
       }
 
+      // Post-install: companion packages (Alpine splits nmap into nmap + nmap-scripts)
+      const companionPkgs: Record<string, string[]> = {
+        nmap: pm.name === 'apk' ? ['nmap-scripts'] : [],
+      };
+      const companions = companionPkgs[capability];
+      if (companions && companions.length > 0) {
+        for (const c of companions) {
+          try {
+            execSync(pm.installCmd(c), { stdio: 'pipe', timeout: 120000 });
+            console.log(`  📦 Companion package: ${c}`);
+          } catch { /* skip */ }
+        }
+      }
+
       return true;
     } catch (err: any) {
       const errMsg = err.stderr?.toString().substring(0, 120) || err.message?.substring(0, 120) || 'unknown';
