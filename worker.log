@@ -1,0 +1,46 @@
+Grobogan Worker Agent v0.1.0
+=============================
+
+Configuration:
+  Worker ID: worker-6e546206
+  Hostname: NativeLinux
+  IP: auto
+  Manager URL: http://localhost:8080
+  Capabilities: nmap, nikto, gobuster, sqlmap, curl, jq, whatweb, sslscan, dig
+  Max Concurrent Tasks: 3
+  Heartbeat Interval: 30000ms
+  Task Request Interval: 5000ms
+
+Connecting to manager at http://localhost:8080
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ All capabilities already installed
+✅ Worker approved — ready to receive tasks
+📦 Installing capability: gobuster
+  📦 Installing gobuster...
+  ✅ gobuster installed
+⚠ Companion package wordlists failed: Command failed: apt-get update -qq && apt-get install -y -qq wordlists 2>&1
+📦 Installing capability: whatweb
+  📦 Installing whatweb...
+  ✅ whatweb installed
+🔍 Verifying capability: dig
+Task assigned: 57ea0599-4f8b-489d-a3cd-4840243c5959
+Executing task: 57ea0599-4f8b-489d-a3cd-4840243c5959 - assessment (1/3)
+[INFO] [57ea0599-4f8b-489d-a3cd-4840243c5959] Starting task: assessment
+[INFO] [57ea0599-4f8b-489d-a3cd-4840243c5959] Executing command: nmap -sS -sV -sC --script vulners,vuln -p- -T4 --unprivileged 192.168.18.1
+[ERROR] [57ea0599-4f8b-489d-a3cd-4840243c5959] You requested a scan type which requires root privileges.
+QUITTING!
+[ERROR] [57ea0599-4f8b-489d-a3cd-4840243c5959] Task failed with exit code 1 after 0.01s
+Task 57ea0599-4f8b-489d-a3cd-4840243c5959 failed: You requested a scan type which requires root privileges.
+QUITTING!
+. Active: 0
+Disconnected from manager: transport close
+Connection error: xhr poll error
+Reconnecting... attempt 1/10
+Connection error: xhr poll error
+Reconnecting... attempt 2/10
+Connection error: xhr poll error
+Reconnecting... attempt 3/10
+Connected to manager
+Worker registered (max 3 concurrent tasks)
+✅ Worker approved — ready to receive tasks
