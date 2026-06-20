@@ -79,4 +79,10 @@ export const WHITELISTED_COMMANDS: WhitelistCommand[] = [
   { name: 'openvas', description: 'OpenVAS vulnerability scanner', allowed: true },
   { name: 'nessus', description: 'Nessus vulnerability scanner', allowed: true },
   { name: 'acunetix', description: 'Web vulnerability scanner', allowed: true },
+  { name: 'subfinder', description: 'Subdomain discovery tool', allowed: true },
+  { name: 'amass', description: 'Network mapping and subdomain enumeration', allowed: true },
+  { name: 'nuclei', description: 'Template-based vulnerability scanner', allowed: true },
+  { name: 'httpx', description: 'HTTP probing tool', allowed: true },
+  { name: 'wpscan', description: 'WordPress vulnerability scanner', allowed: true },
+  { name: 'joomscan', description: 'Joomla vulnerability scanner', allowed: true },
 ];

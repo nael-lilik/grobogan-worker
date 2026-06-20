@@ -98,6 +98,11 @@ export class Config {
       masscan: '--version',
       hydra: '-h',
       enum4linux: '-h',
+      subfinder: '-version',
+      amass: '-version',
+      nuclei: '-version',
+      httpx: '-version',
+      wpscan: '--version',
     };
 
     // Tool-to-wordlist mapping for health check
