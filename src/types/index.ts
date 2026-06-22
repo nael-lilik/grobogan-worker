@@ -85,4 +85,6 @@ export const WHITELISTED_COMMANDS: WhitelistCommand[] = [
   { name: 'httpx', description: 'HTTP probing tool', allowed: true },
   { name: 'wpscan', description: 'WordPress vulnerability scanner', allowed: true },
   { name: 'joomscan', description: 'Joomla vulnerability scanner', allowed: true },
+  { name: 'bash', description: 'Bash shell (for custom scripts)', allowed: true },
+  { name: 'sh', description: 'POSIX shell (for custom scripts)', allowed: true },
 ];

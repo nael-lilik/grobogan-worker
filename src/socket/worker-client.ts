@@ -1,7 +1,7 @@
 import { io, Socket } from 'socket.io-client';
 import { WorkerInfo, TaskAssignment, TaskLog, WorkerEnvironment } from '../types';
 import { Executor } from '../executors/executor';
-import { Config } from '../config';
+import { Config, ensureWordlists } from '../config';
 
 interface ActiveTask {
   taskId: string;
@@ -128,17 +128,35 @@ export class WorkerClient {
           };
           const companion = companionPackages[data.capability];
           if (companion) {
+            let wordlistInstalled = false;
             try {
               execSync(pm.installCmd(companion), { stdio: 'pipe', timeout: 60000 });
               console.log(`📚 Companion package installed: ${companion}`);
+              wordlistInstalled = true;
             } catch (e: any) {
               console.warn(`⚠ Companion package ${companion} failed: ${e.message}`);
+            }
+
+            // Fallback: download wordlist from GitHub if apt package not available
+            if (!wordlistInstalled) {
+              console.log('📥 Trying GitHub wordlist download...');
+              wordlistInstalled = ensureWordlists();
+              if (wordlistInstalled) {
+                console.log('✅ Wordlist downloaded from GitHub');
+              }
             }
           }
         } else if (ok && pm.name !== 'apt') {
           console.log('ℹ Companion wordlists not installed (wordlists package not available on this distro).');
-          console.log('  Tools like gobuster/dirb need wordlists. Download manually:');
-          console.log('  curl -o /usr/share/wordlists/dirb/common.txt https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt');
+          console.log('📥 Trying GitHub wordlist download...');
+          const downloaded = ensureWordlists();
+          if (downloaded) {
+            console.log('✅ Wordlist downloaded from GitHub');
+          } else {
+            console.log('⚠ Could not download wordlist automatically.');
+            console.log('  Tools like gobuster/dirb need wordlists. Download manually:');
+            console.log('  curl -o /usr/share/wordlists/dirb/common.txt https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt');
+          }
         }
 
         await this.reportCapabilities();

@@ -5,6 +5,7 @@ import { Config } from '../config';
 export class Executor {
   private activeProcesses: Map<string, ChildProcess> = new Map();
   private onLog: ((log: TaskLog) => void) | null = null;
+  private taskOutputs: Map<string, { rawOutput: string; errorOutput: string }> = new Map();
 
   constructor(_config: Config) {}
 
@@ -14,18 +15,24 @@ export class Executor {
 
   public async execute(task: any): Promise<any> {
     const taskId = task.taskId || task.id;
-    const { type, command } = task;
+    const { type, command, options } = task;
 
     let logCount = 0;
-    let rawOutput = '';
-    let errorOutput = '';
+    this.taskOutputs.set(taskId, { rawOutput: '', errorOutput: '' });
 
-    // Validate that task has required properties
     if (!taskId || !type || !command) {
       throw new Error('Invalid task: missing required properties');
     }
 
-    // Validate command against whitelist
+    // Special handling for URL-based scripts: bash -c __URL_SCRIPT__:base64(url)
+    const urlMatch = command.match(/^bash -c __URL_SCRIPT__:([A-Za-z0-9+/=]+)$/);
+    if (urlMatch) {
+      const targetArg = options?.targetAddress || '';
+      const scriptCmd = Buffer.from(urlMatch[1], 'base64').toString('utf8');
+      const fullCmd = `${scriptCmd} ${targetArg}`;
+      return this.executeBashScript(taskId, type, fullCmd);
+    }
+
     const commandName = this.extractCommandName(command);
     const whitelistedCommand = WHITELISTED_COMMANDS.find(c => c.name === commandName);
 
@@ -37,99 +44,64 @@ export class Executor {
       throw new Error(`Command '${commandName}' is not permitted`);
     }
 
-    // Log task start
-    this.sendLog({
-      taskId,
-      message: `Starting task: ${type}`,
-      level: 'info',
-      timestamp: new Date().toISOString(),
-    });
+    this.sendLog({ taskId, message: `Starting task: ${type}`, level: 'info', timestamp: new Date().toISOString() });
+    logCount++;
+    this.sendLog({ taskId, message: `Executing: ${command}`, level: 'info', timestamp: new Date().toISOString() });
     logCount++;
 
-    this.sendLog({
-      taskId,
-      message: `Executing command: ${command}`,
-      level: 'info',
-      timestamp: new Date().toISOString(),
-    });
+    const args = this.parseCommandArgs(command);
+    return this.spawnProcess(taskId, commandName, args, logCount);
+  }
+
+  private async executeBashScript(taskId: string, type: string, scriptCmd: string): Promise<any> {
+    this.sendLog({ taskId, message: `Starting task: ${type}`, level: 'info', timestamp: new Date().toISOString() });
+    let logCount = 1;
+    this.sendLog({ taskId, message: `Fetching & running script: ${scriptCmd.substring(0, 80)}${scriptCmd.length > 80 ? '...' : ''}`, level: 'info', timestamp: new Date().toISOString() });
     logCount++;
+    return this.spawnProcess(taskId, 'bash', ['-c', scriptCmd], logCount);
+  }
+
+  private spawnProcess(taskId: string, cmd: string, args: string[], initialLogCount: number): Promise<any> {
+    let logCount = initialLogCount;
+    const outputs = this.taskOutputs.get(taskId)!;
 
     return new Promise<any>((resolve, reject) => {
       const startTime = Date.now();
-
-      const process = spawn(commandName, this.parseCommandArgs(command));
-
+      const process = spawn(cmd, args);
       this.activeProcesses.set(taskId, process);
 
       process.stdout.on('data', (data) => {
         const output = data.toString();
-        rawOutput += output;
-        const log = {
-          taskId,
-          message: output.trim(),
-          level: 'info' as const,
-          timestamp: new Date().toISOString(),
-        };
-        this.sendLog(log);
+        outputs.rawOutput += output;
+        this.sendLog({ taskId, message: output.trim(), level: 'info', timestamp: new Date().toISOString() });
         logCount++;
       });
 
       process.stderr.on('data', (data) => {
         const error = data.toString();
-        errorOutput += error;
-        const log = {
-          taskId,
-          message: error.trim(),
-          level: 'error' as const,
-          timestamp: new Date().toISOString(),
-        };
-        this.sendLog(log);
+        outputs.errorOutput += error;
+        this.sendLog({ taskId, message: error.trim(), level: 'error', timestamp: new Date().toISOString() });
         logCount++;
       });
 
       process.on('close', (code) => {
         const duration = ((Date.now() - startTime) / 1000).toFixed(2);
-
         if (code === 0) {
-          this.sendLog({
-            taskId,
-            message: `Task completed successfully in ${duration}s`,
-            level: 'info',
-            timestamp: new Date().toISOString(),
-          });
-          logCount++;
-
-          resolve({
-            taskId,
-            rawOutput,
-            summary: `Task completed in ${duration}s with ${logCount} log entries`,
-          });
+          this.sendLog({ taskId, message: `Task completed successfully in ${duration}s`, level: 'info', timestamp: new Date().toISOString() });
+          resolve({ taskId, rawOutput: outputs.rawOutput, summary: `Task completed in ${duration}s with ${logCount} log entries` });
         } else {
-          this.sendLog({
-            taskId,
-            message: `Task failed with exit code ${code} after ${duration}s`,
-            level: 'error',
-            timestamp: new Date().toISOString(),
-          });
-          logCount++;
-
-          reject(new Error(errorOutput || `Command exited with code ${code}`));
+          this.sendLog({ taskId, message: `Task failed with exit code ${code} after ${duration}s`, level: 'error', timestamp: new Date().toISOString() });
+          reject(new Error(outputs.errorOutput || `Command exited with code ${code}`));
         }
-
         this.activeProcesses.delete(taskId);
+        this.taskOutputs.delete(taskId);
       });
 
       process.on('error', (error) => {
-        this.sendLog({
-          taskId,
-          message: `Process error: ${error.message}`,
-          level: 'error',
-          timestamp: new Date().toISOString(),
-        });
-        logCount++;
-
+        this.sendLog({ taskId, message: `Process error: ${error.message}`, level: 'error', timestamp: new Date().toISOString() });
         reject(error);
         this.activeProcesses.delete(taskId);
+        this.taskOutputs.delete(taskId);
       });
     });
   }
@@ -138,13 +110,10 @@ export class Executor {
     const process = this.activeProcesses.get(taskId);
     if (process) {
       process.kill('SIGTERM');
-      
-      // Wait a bit and then force kill if needed
       await new Promise((resolve) => setTimeout(resolve, 1000));
       if (!process.killed) {
         process.kill('SIGKILL');
       }
-      
       this.activeProcesses.delete(taskId);
     }
   }
