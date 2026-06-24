@@ -5,6 +5,7 @@ import { Config, ensureWordlists } from '../config';
 
 interface ActiveTask {
   taskId: string;
+  type: string;
   startedAt: Date;
   timeout: NodeJS.Timeout;
   progressInterval: NodeJS.Timeout;
@@ -446,6 +447,21 @@ export class WorkerClient {
       return;
     }
 
+    // Hunt-enrichment cap: at most one in flight per worker so we don't
+    // fire nuclei+httpx at multiple targets in parallel from the same host.
+    if (data.task.type === 'hunt-enrichment') {
+      for (const [, t] of this.activeTasks) {
+        if (t.type === 'hunt-enrichment') {
+          this.socket?.emit('task:rejected', {
+            taskId,
+            reason: 'Another hunt-enrichment task is already in flight on this worker',
+            workerId: this.workerInfo.workerId,
+          });
+          return;
+        }
+      }
+    }
+
     console.log(`Executing task: ${taskId} - ${data.task.type} (${this.activeTasks.size + 1}/${this.config.maxConcurrentTasks})`);
 
     // Emit started
@@ -474,7 +490,7 @@ export class WorkerClient {
       }
     }, 2000);
 
-    const active: ActiveTask = { taskId, startedAt: new Date(), timeout, progressInterval };
+    const active: ActiveTask = { taskId, type: data.task.type, startedAt: new Date(), timeout, progressInterval };
     this.activeTasks.set(taskId, active);
 
     try {
