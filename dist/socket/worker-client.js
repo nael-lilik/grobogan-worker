@@ -36,6 +36,7 @@ Object.defineProperty(exports, "__esModule", { value: true });
 exports.WorkerClient = void 0;
 const socket_io_client_1 = require("socket.io-client");
 const executor_1 = require("../executors/executor");
+const config_1 = require("../config");
 class WorkerClient {
     constructor(config) {
         this.socket = null;
@@ -130,19 +131,37 @@ class WorkerClient {
                     };
                     const companion = companionPackages[data.capability];
                     if (companion) {
+                        let wordlistInstalled = false;
                         try {
                             execSync(pm.installCmd(companion), { stdio: 'pipe', timeout: 60000 });
                             console.log(`📚 Companion package installed: ${companion}`);
+                            wordlistInstalled = true;
                         }
                         catch (e) {
                             console.warn(`⚠ Companion package ${companion} failed: ${e.message}`);
+                        }
+                        // Fallback: download wordlist from GitHub if apt package not available
+                        if (!wordlistInstalled) {
+                            console.log('📥 Trying GitHub wordlist download...');
+                            wordlistInstalled = (0, config_1.ensureWordlists)();
+                            if (wordlistInstalled) {
+                                console.log('✅ Wordlist downloaded from GitHub');
+                            }
                         }
                     }
                 }
                 else if (ok && pm.name !== 'apt') {
                     console.log('ℹ Companion wordlists not installed (wordlists package not available on this distro).');
-                    console.log('  Tools like gobuster/dirb need wordlists. Download manually:');
-                    console.log('  curl -o /usr/share/wordlists/dirb/common.txt https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt');
+                    console.log('📥 Trying GitHub wordlist download...');
+                    const downloaded = (0, config_1.ensureWordlists)();
+                    if (downloaded) {
+                        console.log('✅ Wordlist downloaded from GitHub');
+                    }
+                    else {
+                        console.log('⚠ Could not download wordlist automatically.');
+                        console.log('  Tools like gobuster/dirb need wordlists. Download manually:');
+                        console.log('  curl -o /usr/share/wordlists/dirb/common.txt https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt');
+                    }
                 }
                 await this.reportCapabilities();
             }
@@ -422,6 +441,20 @@ class WorkerClient {
             });
             return;
         }
+        // Hunt-enrichment cap: at most one in flight per worker so we don't
+        // fire nuclei+httpx at multiple targets in parallel from the same host.
+        if (data.task.type === 'hunt-enrichment') {
+            for (const [, t] of this.activeTasks) {
+                if (t.type === 'hunt-enrichment') {
+                    this.socket?.emit('task:rejected', {
+                        taskId,
+                        reason: 'Another hunt-enrichment task is already in flight on this worker',
+                        workerId: this.workerInfo.workerId,
+                    });
+                    return;
+                }
+            }
+        }
         console.log(`Executing task: ${taskId} - ${data.task.type} (${this.activeTasks.size + 1}/${this.config.maxConcurrentTasks})`);
         // Emit started
         this.socket?.emit('task:started', {
@@ -446,7 +479,7 @@ class WorkerClient {
                 this.sendProgress(taskId, progress, 'Task in progress');
             }
         }, 2000);
-        const active = { taskId, startedAt: new Date(), timeout, progressInterval };
+        const active = { taskId, type: data.task.type, startedAt: new Date(), timeout, progressInterval };
         this.activeTasks.set(taskId, active);
         try {
             const result = await this.executor.execute(data.task);

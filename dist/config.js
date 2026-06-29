@@ -34,11 +34,13 @@ var __importStar = (this && this.__importStar) || (function () {
 })();
 Object.defineProperty(exports, "__esModule", { value: true });
 exports.config = exports.Config = void 0;
+exports.ensureWordlists = ensureWordlists;
 const dotenv = __importStar(require("dotenv"));
 const os = __importStar(require("os"));
 const fs = __importStar(require("fs"));
 const path = __importStar(require("path"));
 const uuid_1 = require("uuid");
+const child_process_1 = require("child_process");
 dotenv.config();
 function loadPersistentWorkerId() {
     const idFile = path.join(__dirname, '..', '.worker-id');
@@ -57,10 +59,47 @@ function loadPersistentWorkerId() {
     catch { /* ignore write errors — non-critical */ }
     return id;
 }
+/**
+ * Auto-download wordlist files from GitHub SecLists if missing locally.
+ * Returns true if at least one wordlist path now exists after attempted download.
+ */
+const WORDLIST_URLS = [
+    {
+        url: 'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt',
+        dest: '/usr/share/wordlists/dirb/common.txt',
+    },
+    {
+        url: 'https://raw.githubusercontent.com/danielmiessler/SecLists/master/Discovery/Web-Content/common.txt',
+        dest: '/usr/share/seclists/Discovery/Web-Content/common.txt',
+    },
+];
+function ensureWordlists() {
+    for (const { url, dest } of WORDLIST_URLS) {
+        if (fs.existsSync(dest))
+            continue; // already have it
+        const dir = path.dirname(dest);
+        try {
+            if (!fs.existsSync(dir)) {
+                fs.mkdirSync(dir, { recursive: true });
+            }
+            console.log(`📥 Downloading wordlist: ${path.basename(dest)} → ${dest}`);
+            (0, child_process_1.execSync)(`curl -fsSL --connect-timeout 10 --max-time 30 -o "${dest}" "${url}"`, {
+                stdio: 'pipe',
+                timeout: 35000,
+            });
+            console.log(`✅ Wordlist saved: ${dest}`);
+        }
+        catch (e) {
+            console.warn(`⚠ Failed to download wordlist to ${dest}: ${e.message}`);
+        }
+    }
+    // Return true if at least one of the expected paths now exists
+    return WORDLIST_URLS.some(({ dest }) => fs.existsSync(dest));
+}
 class Config {
     constructor() {
         this.managerUrl = process.env.MANAGER_URL || 'http://localhost:8080';
-        this.workerId = process.env.WORKER_ID || loadPersistentWorkerId();
+        this.workerId = (process.env.WORKER_ID && process.env.WORKER_ID !== "auto") ? process.env.WORKER_ID : loadPersistentWorkerId();
         this.hostname = process.env.HOSTNAME || os.hostname();
         this.ip = process.env.IP || this.getIPAddress();
         this.capabilities = this.parseCapabilities(process.env.CAPABILITIES);
@@ -120,6 +159,11 @@ class Config {
             masscan: '--version',
             hydra: '-h',
             enum4linux: '-h',
+            subfinder: '-version',
+            amass: '-version',
+            nuclei: '-version',
+            httpx: '-version',
+            wpscan: '--version',
         };
         // Tool-to-wordlist mapping for health check
         // A tool passes if at least one of the listed paths exists.
@@ -187,13 +231,16 @@ class Config {
                 }
             }
             results.push(result);
-            // Step 3: check companion wordlists (pass if any path exists)
+            // Step 3: check companion wordlists — auto-download if missing
             const requiredWordlists = wordlistDeps[cap];
             if (requiredWordlists && result.working) {
                 const found = requiredWordlists.some((p) => fs.existsSync(p));
                 if (!found) {
-                    result.working = false;
-                    result.error = `Missing wordlists: none of [${requiredWordlists.join(', ')}] found`;
+                    const downloaded = ensureWordlists();
+                    if (!downloaded) {
+                        result.working = false;
+                        result.error = `Missing wordlists: none of [${requiredWordlists.join(', ')}] found`;
+                    }
                 }
             }
         }

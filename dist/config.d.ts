@@ -1,3 +1,4 @@
+export declare function ensureWordlists(): boolean;
 export declare class Config {
     readonly managerUrl: string;
     readonly workerId: string;
