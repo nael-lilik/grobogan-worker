@@ -1,1 +1,30 @@
+# Dependencies
+node_modules/
+package-lock.json
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Environment & credentials (important for remote update / git pull)
+.env
+.env.*
+!.env.example
+
+# Worker identity & run-time state
+.worker-id
+.worker.pid
 worker.log
+logs/
+*.log
+
+# Build outputs
+dist/
+*.tsbuildinfo
+
+# OS & editor files
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+*.swp
+*.swo
