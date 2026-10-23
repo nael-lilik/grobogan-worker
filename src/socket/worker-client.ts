@@ -2,6 +2,7 @@ import { io, Socket } from 'socket.io-client';
 import { WorkerInfo, TaskAssignment, TaskLog, WorkerEnvironment } from '../types';
 import { Executor } from '../executors/executor';
 import { Config, ensureWordlists } from '../config';
+import { collectSystemResources } from '../utils/system-resources';
 
 interface ActiveTask {
   taskId: string;
@@ -397,16 +398,13 @@ export class WorkerClient {
     const actualCaps = await this.config.detectActualCapabilities();
     const capabilityHealth = await this.config.checkCapabilityHealth();
     const environment = await this.detectEnvironment();
+    const resources = collectSystemResources();
     const workerInfoWithResources = {
       ...this.workerInfo,
       actualCapabilities: actualCaps,
       capabilityHealth,
       environment,
-      resources: {
-        cpu: { usage: 25, cores: 4 },
-        memory: { usage: 40, total: 8192, available: 4915 },
-        disk: { usage: 60, total: 200000, available: 80000 },
-      },
+      resources,
       maxConcurrentTasks: this.config.maxConcurrentTasks,
     };
 
@@ -613,11 +611,7 @@ export class WorkerClient {
       ip: this.workerInfo.ip,
       capabilities: this.workerInfo.capabilities,
       currentTaskCount: this.activeTasks.size,
-      resources: {
-        cpu: { usage: Math.floor(Math.random() * 30) + 10, cores: 4 },
-        memory: { usage: Math.floor(Math.random() * 30) + 20, total: 8192, available: 4915 },
-        disk: { usage: 60, total: 200000, available: 80000 },
-      },
+      resources: collectSystemResources(),
       timestamp: new Date().toISOString(),
     });
   }

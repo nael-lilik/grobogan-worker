@@ -37,6 +37,7 @@ exports.WorkerClient = void 0;
 const socket_io_client_1 = require("socket.io-client");
 const executor_1 = require("../executors/executor");
 const config_1 = require("../config");
+const system_resources_1 = require("../utils/system-resources");
 class WorkerClient {
     constructor(config) {
         this.socket = null;
@@ -397,16 +398,13 @@ class WorkerClient {
         const actualCaps = await this.config.detectActualCapabilities();
         const capabilityHealth = await this.config.checkCapabilityHealth();
         const environment = await this.detectEnvironment();
+        const resources = (0, system_resources_1.collectSystemResources)();
         const workerInfoWithResources = {
             ...this.workerInfo,
             actualCapabilities: actualCaps,
             capabilityHealth,
             environment,
-            resources: {
-                cpu: { usage: 25, cores: 4 },
-                memory: { usage: 40, total: 8192, available: 4915 },
-                disk: { usage: 60, total: 200000, available: 80000 },
-            },
+            resources,
             maxConcurrentTasks: this.config.maxConcurrentTasks,
         };
         this.socket?.emit('worker:register', workerInfoWithResources);
@@ -590,11 +588,7 @@ class WorkerClient {
             ip: this.workerInfo.ip,
             capabilities: this.workerInfo.capabilities,
             currentTaskCount: this.activeTasks.size,
-            resources: {
-                cpu: { usage: Math.floor(Math.random() * 30) + 10, cores: 4 },
-                memory: { usage: Math.floor(Math.random() * 30) + 20, total: 8192, available: 4915 },
-                disk: { usage: 60, total: 200000, available: 80000 },
-            },
+            resources: (0, system_resources_1.collectSystemResources)(),
             timestamp: new Date().toISOString(),
         });
     }
